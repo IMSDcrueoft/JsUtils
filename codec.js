@@ -222,6 +222,9 @@ const Z85 = (function () {
     };
 })();
 
+Codec.B64URL = B64URL;
+Codec.Z85 = Z85;
+
 /***
  * 将 UTF-8 字符串转换为 Uint8Array
  * @param str {string} UTF-8 字符串

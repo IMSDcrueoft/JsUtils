@@ -9,7 +9,7 @@ Codec.EncodeTypeEnum = Object.freeze({
  * Base64URL - 编码/解码工具
  * - URL-safe 字符集 (无 +/=)
  */
-const B64URL = (function () {
+Codec.B64URL = (function () {
     "use strict";
 
     // URL-safe 字符集（无 +/=）
@@ -105,7 +105,7 @@ const B64URL = (function () {
  * Z85 编码/解码工具(小端序处理)
  * - URL-safe 字符集 (无 +/=)
  */
-const Z85 = (function () {
+Codec.Z85 = (function () {
     "use strict";
     // Z85 字符集：去掉了 ", \, / 等 JSON 敏感字符
     const ENCODE_MAP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
@@ -221,9 +221,6 @@ const Z85 = (function () {
         decode_u32: decode_u32
     };
 })();
-
-Codec.B64URL = B64URL;
-Codec.Z85 = Z85;
 
 /***
  * 将 UTF-8 字符串转换为 Uint8Array

@@ -6,8 +6,9 @@ Codec.EncodeTypeEnum = Object.freeze({
 });
 
 /***
- * Base64URL - 编码/解码工具
+ * Base64URL - 编码/解码工具 数据膨胀33%
  * - URL-safe 字符集 (无 +/=)
+ * 适合嵌入URL进行传输
  */
 Codec.B64URL = (function () {
     "use strict";
@@ -113,8 +114,9 @@ Codec.B64URL = (function () {
 })();
 
 /**
- * Z85 编码/解码工具(小端序处理)
+ * Z85 编码/解码工具(小端序处理) 数据膨胀25%
  * - URL-safe 字符集 (无 +/=)
+ * JSON安全但URL不安全,适合本地存储
  */
 Codec.Z85 = (function () {
     "use strict";

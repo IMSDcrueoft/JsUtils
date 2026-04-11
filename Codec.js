@@ -16,25 +16,30 @@ Codec.B64URL = (function () {
     const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
     // 构建解码查找表 (Lookup Table) - 性能优化
-    const DECODE_MAP = Object.create(null);
+    const DECODE_MAP = []; // 数组比hash表更快，直接使用字符的 charCode 作为索引
     for (let i = 0; i < B64.length; i++) {
         DECODE_MAP[B64.charCodeAt(i)] = i;
     }
 
     /**
      * 直接 Base64 编码（无动态 push，预分配长度）
+     * @param {Uint8Array} uint8Array - 输入的字节数组
+     * @param {Array} out - 输入的数组,可在头部追加需要拼接的内容,避免多次拼接字符串
+     * @returns {string} - Base64URL 编码后的字符串
      */
-    function encodeBase64(uint8Array) {
+    function encode(uint8Array, out) {
         if (!uint8Array || !uint8Array.length) return '';
 
+        out = out || [];
+        const baseLen = out.length;
         const len = uint8Array.length;
         // 计算 Base64 输出长度：每 3 个字节变成 4 个字符
         const finalLen = (len * 4 + 2) / 3 | 0;
+        out.length = finalLen + baseLen; // 预分配输出数组长度
 
-        const out = new Array(finalLen); // 预分配数组
         let buffer = 0;
         let bits = 0;
-        let outIndex = 0;
+        let outIndex = baseLen; // 输出索引从 baseLen 开始，保留前面预填充的内容
         let i;
 
         for (i = 0; i < len; i++) {
@@ -58,11 +63,17 @@ Codec.B64URL = (function () {
 
     /**
      * 从 Base64 解码回 Uint8Array（无动态 push，预分配长度）
+     * @param {string} base64Str - Base64URL 编码的字符串
+     * @param {number} offset - 可选，从偏移位置开始解码
+     * @returns {Uint8Array} - 解码后的字节数组
      */
-    function decodeBase64(base64Str) {
-        if (!base64Str) return new Uint8Array(0);
+    function decode(base64Str, offset) {
+        offset = offset || 0;
+        const strLen = base64Str.length;
+        const len = strLen - offset;
 
-        const len = base64Str.length;
+        if (!base64Str || len <= 0) return new Uint8Array(0);
+
         // Base64 解码后长度约为输入的 3/4。
         // 我们预分配最大可能长度 (len * 3 / 4 + 1)，最后截取。
         const maxOutLen = (len * 3 + 1) >> 2;
@@ -73,7 +84,7 @@ Codec.B64URL = (function () {
         let byteIndex = 0;
         let i, val;
 
-        for (i = 0; i < len; i++) {
+        for (i = offset; i < strLen; i++) {
             val = DECODE_MAP[base64Str.charCodeAt(i)]; // 使用 charCodeAt 查表通常比字符串索引更快
             if (val === undefined) continue;
 
@@ -96,8 +107,8 @@ Codec.B64URL = (function () {
     }
 
     return {
-        encode_u8: encodeBase64,
-        decode_u8: decodeBase64,
+        encode_u8: encode,
+        decode_u8: decode,
     };
 })();
 
@@ -111,7 +122,7 @@ Codec.Z85 = (function () {
     const ENCODE_MAP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
 
     // 解码映射表 (字符 -> 数值)
-    const DECODE_MAP = Object.create(null);
+    const DECODE_MAP = [];// 数组比hash表更快，直接使用字符的 charCode 作为索引
     for (let i = 0; i < ENCODE_MAP.length; i++) {
         DECODE_MAP[ENCODE_MAP.charAt(i)] = i;
     }
@@ -119,12 +130,17 @@ Codec.Z85 = (function () {
     /**
      * 编码：将小端整型数组 (Uint32Array) 转换为 Z85 字符串
      * @param {Uint32Array} u32Array - 原始二进制数据
+     * @param {Array} out - 输入的数组,可在头部追加需要拼接的内容,避免多次拼接字符串
      * @returns {string} - Z85 编码后的字符串
      */
-    function encode_u32(u32Array) {
+    function encode_u32(u32Array, out) {
         if (!u32Array || u32Array.length === 0) return "";
 
-        const result = [];
+        out = out || [];
+        let baseLen = out.length;
+        out.length = baseLen + u32Array.length * 5; // 预分配输出数组长度
+
+        let outIndex = baseLen;
 
         // 每 4 个整数处理一次
         for (let i = 0; i < u32Array.length; ++i) {
@@ -141,23 +157,28 @@ Codec.Z85 = (function () {
             value = Math.floor(value / 85);
             const char0 = ENCODE_MAP.charAt(value % 85);
 
-            result.push(char0, char1, char2, char3, char4);
+            out[outIndex++] = char0;
+            out[outIndex++] = char1;
+            out[outIndex++] = char2;
+            out[outIndex++] = char3;
+            out[outIndex++] = char4;
         }
 
-        return result.join('');
+        return out.join('');
     }
 
     /**
      * 解码：将 Z85 字符串还原为小端序整型数组
-     * @param {string} str - Z85 编码的字符串
+     * @param {string} Z85Str - Z85 编码的字符串
      * @param {number} offset - 可选，从偏移位置开始解码
      * @returns {Uint32Array} - 还原后的二进制数据
      */
-    function decode_u32(str, offset) {
-        if (!str || str.length === 0) return new Uint32Array(0);
+    function decode_u32(Z85Str, offset) {
+        if (!Z85Str || Z85Str.length === 0) return new Uint32Array(0);
 
-        const start = offset || 0;
-        const len = str.length - start;
+        offset = offset || 0;
+        const strLen = Z85Str.length;
+        const len = strLen - offset;
 
         // Z85 字符串长度必须是 5 的倍数
         if (len % 5 !== 0) {
@@ -169,11 +190,11 @@ Codec.Z85 = (function () {
         let valueIndex = 0;
 
         // 每 5 个字符处理一次
-        for (let i = start; i < str.length; i += 5) {
+        for (let i = offset; i < strLen; i += 5) {
             let value = 0;
             // 将 5 个字符还原为一个 32 位整数
             for (let j = 0; j < 5; j++) {
-                const char = str.charAt(i + j);
+                const char = Z85Str.charAt(i + j);
                 const digit = DECODE_MAP[char];
                 value = value * 85 + digit;
             }
@@ -204,13 +225,13 @@ Codec.Z85 = (function () {
 
     /**
      * 解码：将 Z85 字符串还原为小端字节数组
-     * @param {string} str - Z85 编码的字符串
+     * @param {string} Z85Str - Z85 编码的字符串
      * @param {number} offset - 从偏移位置开始解码
      * @returns {Uint8Array} - 还原后的二进制数据
      */
-    function decode(str, offset) {
-        if (!str || str.length === 0) return new Uint8Array(0);
-        const u32Array = decode_u32(str, offset);
+    function decode(Z85Str, offset) {
+        if (!Z85Str || Z85Str.length === 0) return new Uint8Array(0);
+        const u32Array = decode_u32(Z85Str, offset);
         return new Uint8Array(u32Array.buffer);
     }
 

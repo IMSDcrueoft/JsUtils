@@ -17,7 +17,7 @@ Codec.B64URL = (function () {
     const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
     // 构建解码查找表 (Lookup Table) - 性能优化
-    const DECODE_MAP = []; // 数组比hash表更快，直接使用字符的 charCode 作为索引
+    const DECODE_MAP = Object.create(null); // 使用对象创建一个纯净的哈希表
     for (let i = 0; i < B64.length; i++) {
         DECODE_MAP[B64.charCodeAt(i)] = i;
     }
@@ -124,7 +124,7 @@ Codec.Z85 = (function () {
     const ENCODE_MAP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
 
     // 解码映射表 (字符 -> 数值)
-    const DECODE_MAP = [];// 数组比hash表更快，直接使用字符的 charCode 作为索引
+    const DECODE_MAP = createObject(null); // 使用对象创建一个纯净的哈希表
     for (let i = 0; i < ENCODE_MAP.length; i++) {
         DECODE_MAP[ENCODE_MAP.charAt(i)] = i;
     }

@@ -1,6 +1,24 @@
-/***
- * 编码器
- * @namespace
+/*
+ * MIT License
+ * Copyright (c) 2026 IMSDcrueoft (https://github.com/IMSDcrueoft)
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
 const Codec = Object.create(null);
 
@@ -289,7 +307,7 @@ Codec.Z85LE = (function () {
 })();
 
 /***
- * 将 Uint8Array 转换为 UTF-8 字符串 (基于 fflate.strFromU8)
+ * 将 Uint8Array 转换为 UTF-8 字符串
  * @param u8Array {Uint8Array}
  * @param {boolean} isAscii - 如果为true，使用isAscii模式(每个字节一个字符)
  * @returns {string} UTF-8 字符串
@@ -304,7 +322,7 @@ Codec.u8ToString = function (u8Array, isAscii) {
         }
         return result;
     }
-    // UTF-8 解码 (基于 fflate 的纯 JS 实现)
+    // UTF-8 解码
     let str = "";
     let pos = 0;
     while (pos < u8Array.length) {
@@ -338,7 +356,7 @@ Codec.u8ToString = function (u8Array, isAscii) {
 };
 
 /***
- * 将字符串转换为 Uint8Array (基于 fflate.strToU8)
+ * 将字符串转换为 Uint8Array
  * @param str {string} - 输入字符串
  * @param {boolean} isAscii - 如果为true，使用isAscii模式(每个字符一个字节)
  * @returns {Uint8Array} UTF-8 字节数组
@@ -353,7 +371,7 @@ Codec.stringToU8 = function (str, isAscii) {
         }
         return arr;
     }
-    // UTF-8 编码 (基于 fflate 的纯 JS 实现)
+    // UTF-8 编码
     const len = str.length;
     let buf = new Uint8Array(len + (len >> 1));
     let pos = 0;

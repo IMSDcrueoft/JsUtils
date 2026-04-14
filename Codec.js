@@ -1,9 +1,8 @@
+/***
+ * 编码器
+ * @namespace
+ */
 const Codec = Object.create(null);
-
-Codec.EncodeTypeEnum = Object.freeze({
-    Z85: "Z85",
-    B64URL: "B64URL"
-});
 
 /***
  * Base64URL - 编码/解码工具 数据膨胀33%
@@ -14,12 +13,16 @@ Codec.B64URL = (function () {
     "use strict";
 
     // URL-safe 字符集（无 +/=）
-    const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    var ENCODE_MAP = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
     // 构建解码查找表 (Lookup Table) - 性能优化
-    const DECODE_MAP = Object.create(null); // 使用对象创建一个纯净的哈希表
-    for (let i = 0; i < B64.length; i++) {
-        DECODE_MAP[B64.charCodeAt(i)] = i;
+    var DECODE_MAP = new Uint8Array(256);
+    var DECODE_INVALID = 0xFF;
+    for (var i = 0; i < 256; i++) {
+        DECODE_MAP[i] = DECODE_INVALID;
+    }
+    for (var i = 0; i < ENCODE_MAP.length; i++) {
+        DECODE_MAP[ENCODE_MAP.charCodeAt(i)] = i;
     }
 
     /**
@@ -29,34 +32,51 @@ Codec.B64URL = (function () {
      * @returns {string} - Base64URL 编码后的字符串
      */
     function encode(uint8Array, out) {
-        if (!uint8Array || !uint8Array.length) return '';
-
         out = out || [];
-        const baseLen = out.length;
-        const len = uint8Array.length;
+        if (!uint8Array || !uint8Array.length) return out.join('');
+
+        var baseLen = out.length;
+        var len = uint8Array.length;
         // 计算 Base64 输出长度：每 3 个字节变成 4 个字符
-        const finalLen = (len * 4 + 2) / 3 | 0;
+        var len_d3 = (len / 3) | 0;
+        var len_m3 = len - 3 * len_d3; // 余数 0, 1, 或 2
+        // 快速循环 + 慢速循环
+        var finalLen = len_d3 + (len_m3 ? 1 : 0);
         out.length = finalLen + baseLen; // 预分配输出数组长度
 
-        let buffer = 0;
-        let bits = 0;
-        let outIndex = baseLen; // 输出索引从 baseLen 开始，保留前面预填充的内容
-        let i;
+        var outIndex = baseLen; // 输出索引从 baseLen 开始，保留前面预填充的内容
+        var h1, h2, h3, h4;
+        var i = 0;
 
-        for (i = 0; i < len; i++) {
-            buffer = (buffer << 8) | uint8Array[i];
-            bits += 8;
+        // fast loop: 3 bytes => 4 chars
+        for (var j = 0; j < len_d3; i += 3, ++j) {
+            var u24 = (uint8Array[i] << 16) | (uint8Array[i + 1] << 8) | uint8Array[i + 2];
 
-            while (bits >= 6) {
-                bits -= 6;
-                // 直接通过索引赋值，避免 push 的扩容检查
-                out[outIndex++] = B64[(buffer >> bits) & 0x3F];
-            }
+            h1 = (u24 >> 18) & 0x3f;
+            h2 = (u24 >> 12) & 0x3f;
+            h3 = (u24 >> 6) & 0x3f;
+            h4 = u24 & 0x3f;
+
+            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2] + ENCODE_MAP[h3] + ENCODE_MAP[h4];
         }
 
-        // 处理剩余位
-        if (bits > 0) {
-            out[outIndex] = B64[(buffer << (6 - bits)) & 0x3F];
+        // slow loop: handle remaining 1 or 2 bytes
+        if (len_m3 === 2) {
+            // 2 bytes = 16 bits, need 3 chars (18 bits, last 2 bits are 0)
+            // u16 = [byte1: 8 bits][byte2: 8 bits]
+            // enc = [6][6][4+2padding]
+            var u16 = (uint8Array[i] << 8) | uint8Array[i + 1];
+            h1 = (u16 >> 10) & 0x3f;
+            h2 = (u16 >> 4) & 0x3f;
+            h3 = (u16 << 2) & 0x3f;
+            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2] + ENCODE_MAP[h3];
+        } else if (len_m3 === 1) {
+            // 1 byte = 8 bits, need 2 chars (12 bits, last 4 bits are 0)
+            // enc = [6][2+4padding]
+            var u8 = uint8Array[i];
+            h1 = (u8 >> 2) & 0x3f;
+            h2 = (u8 << 4) & 0x3f;
+            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2];
         }
 
         return out.join('');
@@ -70,24 +90,24 @@ Codec.B64URL = (function () {
      */
     function decode(base64Str, offset) {
         offset = offset || 0;
-        const strLen = base64Str.length;
-        const len = strLen - offset;
+        var strLen = base64Str.length;
+        var len = strLen - offset;
 
         if (!base64Str || len <= 0) return new Uint8Array(0);
 
         // Base64 解码后长度约为输入的 3/4。
         // 我们预分配最大可能长度 (len * 3 / 4 + 1)，最后截取。
-        const maxOutLen = (len * 3 + 1) >> 2;
-        const bytes = new Uint8Array(maxOutLen);
+        var maxOutLen = (len * 3 + 1) >> 2;
+        var bytes = new Uint8Array(maxOutLen);
 
-        let buffer = 0;
-        let bits = 0;
-        let byteIndex = 0;
-        let i, val;
+        var buffer = 0;
+        var bits = 0;
+        var byteIndex = 0;
+        var i, val;
 
         for (i = offset; i < strLen; i++) {
             val = DECODE_MAP[base64Str.charCodeAt(i)]; // 使用 charCodeAt 查表通常比字符串索引更快
-            if (val === undefined) continue;
+            if (val === DECODE_INVALID) continue;
 
             buffer = (buffer << 6) | val;
             bits += 6;
@@ -107,26 +127,148 @@ Codec.B64URL = (function () {
         return bytes;
     }
 
+    /**
+     * 将 ASCII 字符串编码为 Base64URL 字符串
+     * @param {string} str - 输入的 ASCII 字符串（只包含 0-127 字符）
+     * @param {Array} out - 可选，输出数组，可在头部追加需要拼接的内容
+     * @returns {string} - Base64URL 编码后的字符串
+     */
+    function encode_ascii(str, out) {
+        out = out || [];
+        if (!str || !str.length) return out.join('');
+
+        var baseLen = out.length;
+        var len = str.length;
+        // 计算 Base64 输出长度：每 3 个字节变成 4 个字符
+        var len_d3 = (len / 3) | 0;
+        var len_m3 = len - 3 * len_d3; // 余数 0, 1, 或 2
+        var finalLen = len_d3 + (len_m3 ? 1 : 0);
+        out.length = finalLen + baseLen; // 预分配输出数组长度
+
+        var outIndex = baseLen;
+        var h1, h2, h3, h4;
+        var i = 0;
+
+        // fast loop: 3 bytes => 4 chars
+        for (var j = 0; j < len_d3; i += 3, ++j) {
+            var u24 = ((str.charCodeAt(i) & 0xFF) << 16) |
+                ((str.charCodeAt(i + 1) & 0xFF) << 8) |
+                (str.charCodeAt(i + 2) & 0xFF);
+
+            h1 = (u24 >> 18) & 0x3f;
+            h2 = (u24 >> 12) & 0x3f;
+            h3 = (u24 >> 6) & 0x3f;
+            h4 = u24 & 0x3f;
+
+            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2] + ENCODE_MAP[h3] + ENCODE_MAP[h4];
+        }
+
+        // slow loop: handle remaining 1 or 2 bytes
+        if (len_m3 === 2) {
+            var u16 = ((str.charCodeAt(i) & 0xFF) << 8) | (str.charCodeAt(i + 1) & 0xFF);
+            h1 = (u16 >> 10) & 0x3f;
+            h2 = (u16 >> 4) & 0x3f;
+            h3 = (u16 << 2) & 0x3f;
+            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2] + ENCODE_MAP[h3];
+        } else if (len_m3 === 1) {
+            var u8 = str.charCodeAt(i) & 0xFF;
+            h1 = (u8 >> 2) & 0x3f;
+            h2 = (u8 << 4) & 0x3f;
+            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2];
+        }
+
+        return out.join('');
+    }
+
+    /**
+     * 将 Base64URL 字符串解码为 ASCII 字符串
+     * @param {string} base64Str - Base64URL 编码的字符串
+     * @param {number} offset - 可选，从偏移位置开始解码
+     * @returns {string} - 解码后的 ASCII 字符串
+     */
+    function decode_ascii(base64Str, offset) {
+        offset = offset || 0;
+        var strLen = base64Str.length;
+        var len = strLen - offset;
+
+        if (!base64Str || len <= 0) return '';
+
+        // Base64 解码后长度约为输入的 3/4
+        var maxOutLen = (len * 3 + 1) >> 2;
+        // 使用 Uint8Array 收集字节（比数组索引赋值更快）
+        var bytes = new Uint8Array(maxOutLen);
+
+        var buffer = 0;
+        var bits = 0;
+        var byteIndex = 0;
+        var i, val;
+
+        for (i = offset; i < strLen; i++) {
+            val = DECODE_MAP[base64Str.charCodeAt(i)];
+            if (val === DECODE_INVALID) continue;
+
+            buffer = (buffer << 6) | val;
+            bits += 6;
+
+            if (bits >= 8) {
+                bits -= 8;
+                bytes[byteIndex++] = (buffer >> bits) & 0xFF;
+            }
+        }
+
+        // 截取实际使用的部分
+        if (byteIndex !== maxOutLen) {
+            bytes = bytes.subarray(0, byteIndex);
+        }
+
+        // 小数据直接用数组 join，大数据用批量 apply
+        if (byteIndex <= 64) {
+            // 小数据：直接用数组收集更快
+            var chars = new Array(byteIndex);
+            for (var j = 0; j < byteIndex; j++) {
+                chars[j] = String.fromCharCode(bytes[j]);
+            }
+            return chars.join('');
+        }
+
+        // 大数据：批量转换为字符串，避免栈溢出（最大 16384 个参数）
+        var result = '';
+        var chunkSize = 16384;
+        for (var pos = 0; pos < byteIndex; pos += chunkSize) {
+            var end = Math.min(pos + chunkSize, byteIndex);
+            result += String.fromCharCode.apply(null, bytes.subarray(pos, end));
+        }
+
+        return result;
+    }
+
     return {
         encode_u8: encode,
         decode_u8: decode,
+        encode_ascii: encode_ascii,
+        decode_ascii: decode_ascii
     };
 })();
 
 /**
- * Z85 编码/解码工具(小端序处理) 数据膨胀25%
- * - URL-safe 字符集 (无 +/=)
+ * Z85 编码/解码工具(小端序变体) 数据膨胀25%
  * JSON安全但URL不安全,适合本地存储
+ *
+ * B64URL 数据膨胀33%
  */
-Codec.Z85 = (function () {
+Codec.Z85LE = (function () {
     "use strict";
     // Z85 字符集：去掉了 ", \, / 等 JSON 敏感字符
-    const ENCODE_MAP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
+    var ENCODE_MAP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
 
-    // 解码映射表 (字符 -> 数值)
-    const DECODE_MAP = createObject(null); // 使用对象创建一个纯净的哈希表
-    for (let i = 0; i < ENCODE_MAP.length; i++) {
-        DECODE_MAP[ENCODE_MAP.charAt(i)] = i;
+    // 构建解码查找表 (Lookup Table) - 性能优化
+    var DECODE_MAP = new Uint8Array(256);
+    var DECODE_INVALID = 0xFF;
+    for (var i = 0; i < 256; i++) {
+        DECODE_MAP[i] = DECODE_INVALID;
+    }
+    for (var i = 0; i < ENCODE_MAP.length; i++) {
+        DECODE_MAP[ENCODE_MAP.charCodeAt(i)] = i;
     }
 
     /**
@@ -136,34 +278,36 @@ Codec.Z85 = (function () {
      * @returns {string} - Z85 编码后的字符串
      */
     function encode_u32(u32Array, out) {
-        if (!u32Array || u32Array.length === 0) return "";
-
         out = out || [];
-        let baseLen = out.length;
-        out.length = baseLen + u32Array.length * 5; // 预分配输出数组长度
+        if (!u32Array || u32Array.length === 0) return out.join('');
 
-        let outIndex = baseLen;
+        var baseLen = out.length;
+        out.length = baseLen + u32Array.length; // 预分配输出数组长度
 
+        var outIndex = baseLen;
+
+        var value, nextValue,INV_85 = 1.0 / 85;
         // 每 4 个整数处理一次
-        for (let i = 0; i < u32Array.length; ++i) {
-            let value = u32Array[i];
+        for (var i = 0; i < u32Array.length; ++i) {
+            value = u32Array[i];
 
             // 将 32 位整数转换为 5 个 85 进制的字符, 展开循环
-            const char4 = ENCODE_MAP.charAt(value % 85);
-            value = Math.floor(value / 85);
-            const char3 = ENCODE_MAP.charAt(value % 85);
-            value = Math.floor(value / 85);
-            const char2 = ENCODE_MAP.charAt(value % 85);
-            value = Math.floor(value / 85);
-            const char1 = ENCODE_MAP.charAt(value % 85);
-            value = Math.floor(value / 85);
-            const char0 = ENCODE_MAP.charAt(value % 85);
+            nextValue = Math.floor(value * INV_85);
+            var char4 = ENCODE_MAP[value - 85 * nextValue];
+            value = nextValue;
+            nextValue = Math.floor(value * INV_85);
+            var char3 = ENCODE_MAP[value - 85 * nextValue];
+            value = nextValue;
+            nextValue = Math.floor(value * INV_85);
+            var char2 = ENCODE_MAP[value - 85 * nextValue];
+            value = nextValue;
+            nextValue = Math.floor(value * INV_85);
+            var char1 = ENCODE_MAP[value - 85 * nextValue];
+            value = nextValue;
+            nextValue = Math.floor(value * INV_85);
+            var char0 = ENCODE_MAP[value - 85 * nextValue];
 
-            out[outIndex++] = char0;
-            out[outIndex++] = char1;
-            out[outIndex++] = char2;
-            out[outIndex++] = char3;
-            out[outIndex++] = char4;
+            out[outIndex++] = (char0 + char1 + char2 + char3 + char4);
         }
 
         return out.join('');
@@ -179,8 +323,8 @@ Codec.Z85 = (function () {
         if (!Z85Str || Z85Str.length === 0) return new Uint32Array(0);
 
         offset = offset || 0;
-        const strLen = Z85Str.length;
-        const len = strLen - offset;
+        var strLen = Z85Str.length;
+        var len = strLen - offset;
 
         // Z85 字符串长度必须是 5 的倍数
         if (len % 5 !== 0) {
@@ -188,18 +332,18 @@ Codec.Z85 = (function () {
         }
 
         // 5个字符转一个u32
-        const result = new Uint32Array(len / 5);
-        let valueIndex = 0;
+        var result = new Uint32Array(len / 5);
+        var valueIndex = 0;
 
-        // 每 5 个字符处理一次
-        for (let i = offset; i < strLen; i += 5) {
-            let value = 0;
+        // 每 5 个字符处理一次，展开循环减少循环开销
+        for (var i = offset; i < strLen; i += 5) {
             // 将 5 个字符还原为一个 32 位整数
-            for (let j = 0; j < 5; j++) {
-                const char = Z85Str.charAt(i + j);
-                const digit = DECODE_MAP[char];
-                value = value * 85 + digit;
-            }
+            // 使用 charCodeAt 查表，展开循环
+            var value = DECODE_MAP[Z85Str.charCodeAt(i)] * 52200625 +     // * 85^4
+                DECODE_MAP[Z85Str.charCodeAt(i + 1)] * 614125 +   // * 85^3
+                DECODE_MAP[Z85Str.charCodeAt(i + 2)] * 7225 +     // * 85^2
+                DECODE_MAP[Z85Str.charCodeAt(i + 3)] * 85 +       // * 85^1
+                DECODE_MAP[Z85Str.charCodeAt(i + 4)];             // * 85^0
 
             result[valueIndex] = value;
             ++valueIndex;
@@ -211,18 +355,20 @@ Codec.Z85 = (function () {
     /**
      * 编码：将字节数组 (Array/Uint8Array) 转换为 Z85 字符串
      * @param {Uint8Array} u8Array - 原始二进制数据
+     * @param {Array} out - 输入的数组,可在头部追加需要拼接的内容,避免多次拼接字符串
      * @returns {string} - Z85 编码后的字符串
      */
-    function encode(u8Array) {
-        if (!u8Array || u8Array.length === 0) return "";
+    function encode(u8Array, out) {
+        out = out || [];
+        if (!u8Array || u8Array.length === 0) return out.join('');
 
-        const len = u8Array.length;
-        const padding = (4 - (len % 4)) % 4; // 补齐到 4 的倍数
+        var len = u8Array.length;
+        var padding = (4 - (len % 4)) % 4; // 补齐到 4 的倍数
 
-        // 创建一个带填充的临时视图
-        const view = new Uint8Array(len + padding);
+        // 创建一个带填充的临时缓冲区
+        var view = new Uint8Array(len + padding);
         view.set(u8Array);
-        return encode_u32(new Uint32Array(view.buffer));
+        return encode_u32(new Uint32Array(view.buffer), out);
     }
 
     /**
@@ -233,7 +379,7 @@ Codec.Z85 = (function () {
      */
     function decode(Z85Str, offset) {
         if (!Z85Str || Z85Str.length === 0) return new Uint8Array(0);
-        const u32Array = decode_u32(Z85Str, offset);
+        var u32Array = decode_u32(Z85Str, offset);
         return new Uint8Array(u32Array.buffer);
     }
 
@@ -246,85 +392,106 @@ Codec.Z85 = (function () {
 })();
 
 /***
- * 将 UTF-8 字符串转换为 Uint8Array
- * @param str {string} UTF-8 字符串
- * @returns {Uint8Array}
+ * 将 Uint8Array 转换为 UTF-8 字符串 (基于 fflate.strFromU8)
+ * @param u8Array {Uint8Array}
+ * @param {boolean} isAscii - 如果为true，使用isAscii模式(每个字节一个字符)
+ * @returns {string} UTF-8 字符串
  */
-Codec.stringToU8 = function (str) {
+Codec.u8ToString = function (u8Array, isAscii) {
     "use strict";
-    const bytes = [];
-    for (let i = 0; i < str.length; i++) {
-        let code = str.charCodeAt(i);
-        if (code < 0x80) {
-            // 单字节 (ASCII)
-            bytes.push(code);
-        } else if (code < 0x800) {
-            // 双字节
-            bytes.push(0xC0 | (code >> 6));
-            bytes.push(0x80 | (code & 0x3F));
-        } else if (code < 0xD800 || code >= 0xE000) {
-            // 三字节 (基本多文种平面，排除代理对区域)
-            bytes.push(0xE0 | (code >> 12));
-            bytes.push(0x80 | ((code >> 6) & 0x3F));
-            bytes.push(0x80 | (code & 0x3F));
+    // isAscii 模式: 每个字节直接转为一个字符
+    if (isAscii) {
+        var result = "";
+        for (var i = 0; i < u8Array.length; i += 16384) {
+            result += String.fromCharCode.apply(null, u8Array.subarray(i, i + 16384));
+        }
+        return result;
+    }
+    // UTF-8 解码 (基于 fflate 的纯 JS 实现)
+    var str = "";
+    var pos = 0;
+    while (pos < u8Array.length) {
+        var byte1 = u8Array[pos++];
+        var bytes = (byte1 > 127) + (byte1 > 223) + (byte1 > 239);
+        if (pos + bytes > u8Array.length) break;
+        if (bytes) {
+            if (bytes === 3) {
+                // 四字节字符 (Emoji等)
+                var b2 = u8Array[pos++];
+                var b3 = u8Array[pos++];
+                var b4 = u8Array[pos++];
+                var codePoint = ((byte1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F);
+                codePoint -= 0x10000;
+                var highSurrogate = 0xD800 + (codePoint >> 10);
+                var lowSurrogate = 0xDC00 + (codePoint & 0x3FF);
+                str += String.fromCharCode(highSurrogate, lowSurrogate);
+            } else if (bytes === 1) {
+                // 双字节字符
+                str += String.fromCharCode(((byte1 & 0x1F) << 6) | (u8Array[pos++] & 0x3F));
+            } else {
+                // 三字节字符
+                str += String.fromCharCode(((byte1 & 0x0F) << 12) | ((u8Array[pos++] & 0x3F) << 6) | (u8Array[pos++] & 0x3F));
+            }
         } else {
-            // 四字节 (代理对，处理 Unicode 码点 > 0xFFFF 的字符)
-            i++;
-            const low = str.charCodeAt(i);
-            const codePoint = 0x10000 + (((code & 0x3FF) << 10) | (low & 0x3FF));
-            bytes.push(0xF0 | (codePoint >> 18));
-            bytes.push(0x80 | ((codePoint >> 12) & 0x3F));
-            bytes.push(0x80 | ((codePoint >> 6) & 0x3F));
-            bytes.push(0x80 | (codePoint & 0x3F));
+            // 单字节 (ASCII)
+            str += String.fromCharCode(byte1);
         }
     }
-    return new Uint8Array(bytes);
+    return str;
 };
 
 /***
- * 将 Uint8Array 转换为 UTF-8 字符串
- * @param u8Array {Uint8Array}
- * @returns {string} UTF-8 字符串
+ * 将字符串转换为 Uint8Array (基于 fflate.strToU8)
+ * @param str {string} - 输入字符串
+ * @param {boolean} isAscii - 如果为true，使用isAscii模式(每个字符一个字节)
+ * @returns {Uint8Array} UTF-8 字节数组
  */
-Codec.u8ToString = function (u8Array) {
+Codec.stringToU8 = function (str, isAscii) {
     "use strict";
-    const chars = [];
-    let i = 0;
-    while (i < u8Array.length) {
-        const byte1 = u8Array[i];
-        if (byte1 < 0x80) {
-            // 单字节 (ASCII)
-            chars.push(String.fromCharCode(byte1));
-            i++;
-        } else if ((byte1 & 0xE0) === 0xC0) {
+    // isAscii 模式: 每个字符取低8位
+    if (isAscii) {
+        var arr = new Uint8Array(str.length);
+        for (var i = 0; i < str.length; ++i) {
+            arr[i] = str.charCodeAt(i);
+        }
+        return arr;
+    }
+    // UTF-8 编码 (基于 fflate 的纯 JS 实现)
+    var len = str.length;
+    var buf = new Uint8Array(len + (len >> 1));
+    var pos = 0;
+    for (var i = 0; i < len; ++i) {
+        // 扩容检查
+        if (pos + 5 > buf.length) {
+            var newBuf = new Uint8Array(pos + 8 + ((len - i) << 1));
+            newBuf.set(buf);
+            buf = newBuf;
+        }
+        var code = str.charCodeAt(i);
+        if (code < 128) {
+            // 单字节 ASCII
+            buf[pos++] = code;
+        } else if (code < 2048) {
             // 双字节
-            const byte2 = u8Array[i + 1];
-            const code = ((byte1 & 0x1F) << 6) | (byte2 & 0x3F);
-            chars.push(String.fromCharCode(code));
-            i += 2;
-        } else if ((byte1 & 0xF0) === 0xE0) {
-            // 三字节
-            const byte2 = u8Array[i + 1];
-            const byte3 = u8Array[i + 2];
-            const code = ((byte1 & 0x0F) << 12) | ((byte2 & 0x3F) << 6) | (byte3 & 0x3F);
-            chars.push(String.fromCharCode(code));
-            i += 3;
-        } else if ((byte1 & 0xF8) === 0xF0) {
-            // 四字节 (需要转换为代理对)
-            const byte2 = u8Array[i + 1];
-            const byte3 = u8Array[i + 2];
-            const byte4 = u8Array[i + 3];
-            let codePoint = ((byte1 & 0x07) << 18) | ((byte2 & 0x3F) << 12) | ((byte3 & 0x3F) << 6) | (byte4 & 0x3F);
-            codePoint -= 0x10000;
-            chars.push(String.fromCharCode(0xD800 + (codePoint >> 10)));
-            chars.push(String.fromCharCode(0xDC00 + (codePoint & 0x3FF)));
-            i += 4;
+            buf[pos++] = 192 | code >> 6;
+            buf[pos++] = 128 | (63 & code);
+        } else if (code > 55295 && code < 57344) {
+            // 代理对 (四字节)
+            var nextCode = str.charCodeAt(++i);
+            var point = 65536 + (((code & 0x3FF) << 10) | (nextCode & 0x3FF));
+            buf[pos++] = 240 | (point >> 18);
+            buf[pos++] = 128 | ((point >> 12) & 63);
+            buf[pos++] = 128 | ((point >> 6) & 63);
+            buf[pos++] = 128 | (point & 63);
         } else {
-            // 非法字节，跳过
-            i++;
+            // 三字节
+            buf[pos++] = 224 | code >> 12;
+            buf[pos++] = 128 | (code >> 6 & 63);
+            buf[pos++] = 128 | (63 & code);
         }
     }
-    return chars.join('');
+    // 截取实际使用的长度
+    return buf.subarray(0, pos);
 };
 
 exports.Codec = Codec;

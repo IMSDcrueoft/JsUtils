@@ -95,19 +95,32 @@ Codec.B64URL = (function () {
 
         if (!base64Str || len <= 0) return new Uint8Array(0);
 
+        // 计算 Base64 输出长度：每 4 个字符变成 3 个字节
+        const len_d4 = (len / 4) | 0;
+
         // Base64 解码后长度约为输入的 3/4。
         // 我们预分配最大可能长度 (len * 3 / 4 + 1)，最后截取。
         const maxOutLen = (len * 3 + 1) >> 2;
         const bytes = new Uint8Array(maxOutLen);
 
-        let buffer = 0;
-        let bits = 0;
         let byteIndex = 0;
-        let i, val;
+        let i = offset, val;
 
-        for (i = offset; i < strLen; i++) {
+        // fast loop: 4 chars => 3 bytes
+        for (let j = 0; j < len_d4; i += 4, ++j) {
+            val = DECODE_MAP[base64Str.charCodeAt(i)] << 18 |
+                DECODE_MAP[base64Str.charCodeAt(i + 1)] << 12 |
+                DECODE_MAP[base64Str.charCodeAt(i + 2)] << 6 |
+                DECODE_MAP[base64Str.charCodeAt(i + 3)];
+
+            bytes[byteIndex++] = (val >> 16) & 0xFF;
+            bytes[byteIndex++] = (val >> 8) & 0xFF;
+            bytes[byteIndex++] = val & 0xFF;
+        }
+
+        // slow loop: handle remaining chars
+        for (let buffer = 0, bits = 0; i < strLen; i++) {
             val = DECODE_MAP[base64Str.charCodeAt(i)]; // 使用 charCodeAt 查表通常比字符串索引更快
-            if (val === DECODE_INVALID) continue;
 
             buffer = (buffer << 6) | val;
             bits += 6;

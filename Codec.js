@@ -233,18 +233,17 @@ Codec.Z85LE = (function () {
      * - Loop fully unrolled for zero branch misprediction
      * 
      * @param {Uint32Array} u32Array - Raw binary data as 32-bit integers
-     * @param {Array} out - Optional output array (allows prefix concatenation)
+     * @param {string} prefix - Optional prefix string (allows prefix content without extra concatenation)
      * @returns {string} - Z85 encoded string
      */
-    function encode_u32(u32Array, out) {
-        out = out || [];
-        if (!u32Array || u32Array.length === 0) return out.join('');
+    function encode_u32(u32Array, prefix) {
+        prefix = prefix || '';
+        if (!u32Array || u32Array.length === 0) return prefix;
 
-        const baseLen = out.length;
-        out.length = baseLen + u32Array.length; // Pre-allocate array capacity
+        const result = new Array(1 + u32Array.length);// Pre-allocate array capacity
+        result[0] = prefix;
 
-        let outIndex = baseLen;
-
+        let outIndex = 1;
         let value, nextValue;
         const INV_85 = 1.0 / 85; // Reciprocal for multiplication instead of division
         
@@ -275,10 +274,10 @@ Codec.Z85LE = (function () {
             const char0 = ENCODE_MAP[value - 85 * nextValue];
 
             // Batch all 5 characters into single concatenation
-            out[outIndex++] = (char0 + char1 + char2 + char3 + char4);
+            result[outIndex++] = (char0 + char1 + char2 + char3 + char4);
         }
 
-        return out.join('');
+        return result.join('');
     }
 
     /**

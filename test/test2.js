@@ -1,4 +1,4 @@
-const { Codec } = require('./Codec.js'); // 引入提供的codec文件
+const { Codec } = require('../Codec.js'); // 引入提供的codec文件
 
 /**
  * 吞吐量测试工具（支持无JIT模式）
@@ -8,7 +8,9 @@ class ThroughputTest {
         this.testDataSizes = [
             1024,       // 1KB
             10240,      // 10KB
-            102400,     // 100KB
+            65536,      // 64KB
+            262144,     // 256KB
+            1048576,    // 1MB
         ];
         
         this.iterations = 100; // 每个大小重复测试次数

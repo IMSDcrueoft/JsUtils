@@ -1,4 +1,4 @@
-const { Codec } = require('./Codec.js'); // 引入提供的codec文件
+const { Codec } = require('../Codec.js'); // 引入提供的codec文件
 
 // ==================== 测试辅助函数 ====================
 function assert(condition, message) {
@@ -79,8 +79,7 @@ function testB64URL() {
     // 测试6: 带 out 参数的编码
     (() => {
         const data = new Uint8Array([0x41, 0x42, 0x43]);
-        const out = ['H', 'e', 'l', 'l', 'o', '-'];
-        const encoded = Codec.B64URL.encode_u8(data, out);
+        const encoded = Codec.B64URL.encode_u8(data, 'Hello-');
         assert(encoded === 'Hello-QUJD', '带 out 参数的编码应正确拼接');
         logSuccess('带 out 参数的编码');
     })();
@@ -177,8 +176,7 @@ function testZ85() {
     // 测试7: 带 out 参数的编码
     (() => {
         const u32Data = new Uint32Array([0x12345678]);
-        const out = ['P', 'r', 'e', 'f', 'i', 'x', '-'];
-        const encoded = Codec.Z85LE.encode_u32(u32Data, out);
+        const encoded = Codec.Z85LE.encode_u32(u32Data, 'Prefix-');
         assert(encoded.startsWith('Prefix-'), '带 out 参数的编码应正确拼接');
         logSuccess('带 out 参数的编码');
     })();

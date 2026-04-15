@@ -78,7 +78,7 @@ Codec.B64URL = (function () {
 
         // encode to bytes
         const bytes = new Uint8Array(finalLen);
-        let byteIndex = 0; // 输出索引从 baseLen 开始，保留前面预填充的内容
+        let byteIndex = 0;
         let h1, h2, h3, h4;
         let i = 0;
 
@@ -211,8 +211,12 @@ Codec.Z85LE = (function () {
     "use strict";
     
     // Z85 character set: excludes JSON-sensitive characters (", \, /)
-    const ENCODE_MAP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
+    const Z85 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
 
+    const ENCODE_MAP = new Uint8Array(Z85.length);
+    for (let i = 0; i < Z85.length; i++) {
+        ENCODE_MAP[i] = Z85.charCodeAt(i);
+    }
     // Build decode lookup table (LUT) for O(1) character mapping
     const DECODE_MAP = new Uint8Array(256);
     const DECODE_INVALID = 0xFF;
@@ -220,7 +224,7 @@ Codec.Z85LE = (function () {
         DECODE_MAP[i] = DECODE_INVALID;
     }
     for (let i = 0; i < ENCODE_MAP.length; i++) {
-        DECODE_MAP[ENCODE_MAP.charCodeAt(i)] = i;
+        DECODE_MAP[ENCODE_MAP[i]] = i;
     }
 
     /**
@@ -240,10 +244,11 @@ Codec.Z85LE = (function () {
         prefix = prefix || '';
         if (!u32Array || u32Array.length === 0) return prefix;
 
-        const result = new Array(1 + u32Array.length);// Pre-allocate array capacity
-        result[0] = prefix;
+        // Pre-allocate output array length
+        const finalLen = u32Array.length * 5; // Every uint32 → 5 characters
+        const bytes = new Uint8Array(finalLen);
+        let byteIndex = 0;
 
-        let outIndex = 1;
         let value, nextValue;
         const INV_85 = 1.0 / 85; // Reciprocal for multiplication instead of division
         
@@ -255,29 +260,34 @@ Codec.Z85LE = (function () {
             // Convert 32-bit integer to 5 base-85 digits (unrolled)
             // Each iteration: quotient = floor(value / 85), remainder = value % 85
             nextValue = Math.floor(value * INV_85);
-            const char4 = ENCODE_MAP[value - 85 * nextValue];
+            bytes[byteIndex + 4] = ENCODE_MAP[value - 85 * nextValue];
             value = nextValue;
             
             nextValue = Math.floor(value * INV_85);
-            const char3 = ENCODE_MAP[value - 85 * nextValue];
+            bytes[byteIndex + 3] = ENCODE_MAP[value - 85 * nextValue];
             value = nextValue;
             
             nextValue = Math.floor(value * INV_85);
-            const char2 = ENCODE_MAP[value - 85 * nextValue];
+            bytes[byteIndex + 2] = ENCODE_MAP[value - 85 * nextValue];
             value = nextValue;
             
             nextValue = Math.floor(value * INV_85);
-            const char1 = ENCODE_MAP[value - 85 * nextValue];
+            bytes[byteIndex + 1] = ENCODE_MAP[value - 85 * nextValue];
             value = nextValue;
             
             nextValue = Math.floor(value * INV_85);
-            const char0 = ENCODE_MAP[value - 85 * nextValue];
+            bytes[byteIndex + 0] = ENCODE_MAP[value - 85 * nextValue];
 
-            // Batch all 5 characters into single concatenation
-            result[outIndex++] = (char0 + char1 + char2 + char3 + char4);
+            byteIndex += 5;
         }
 
-        return result.join('');
+        // Convert byte array to string in 16384-character chunks to avoid Function.apply argument limit
+        let result = prefix;
+        for (var pos = 0; pos < byteIndex; pos += 16384) {
+            var end = Math.min(pos + 16384, byteIndex);
+            result += String.fromCharCode.apply(null, bytes.subarray(pos, end));
+        }
+        return result;
     }
 
     /**

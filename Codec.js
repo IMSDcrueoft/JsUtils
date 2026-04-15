@@ -32,7 +32,12 @@ Codec.B64URL = (function () {
     "use strict";
 
     // URL-safe character set (RFC 4648 base64url)
-    const ENCODE_MAP = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+    const ENCODE_MAP = new Uint8Array(B64.length);
+    for (let i = 0; i < B64.length; i++) {
+        ENCODE_MAP[i] = B64.charCodeAt(i);
+    }
 
     // Build decode lookup table (LUT) for O(1) character mapping
     // Using Uint8Array for cache-friendly memory layout
@@ -42,7 +47,7 @@ Codec.B64URL = (function () {
         DECODE_MAP[i] = DECODE_INVALID;
     }
     for (let i = 0; i < ENCODE_MAP.length; i++) {
-        DECODE_MAP[ENCODE_MAP.charCodeAt(i)] = i;
+        DECODE_MAP[ENCODE_MAP[i]] = i;
     }
 
     /**
@@ -55,14 +60,13 @@ Codec.B64URL = (function () {
      * - Batches 4 characters into single string concatenation
      * 
      * @param {Uint8Array} uint8Array - Input byte array
-     * @param {Array} out - Optional output array (allows prefix content without extra concatenation)
+     * @param {string} prefix - Optional prefix string (allows prefix content without extra concatenation)
      * @returns {string} - Base64URL encoded string
      */
-    function encode(uint8Array, out) {
-        out = out || [];
-        if (!uint8Array || !uint8Array.length) return out.join('');
+    function encode(uint8Array, prefix) {
+        prefix = prefix || '';
+        if (!uint8Array || !uint8Array.length) return prefix;
 
-        const baseLen = out.length;
         const len = uint8Array.length;
         
         // Calculate output length: every 3 bytes → 4 characters
@@ -70,10 +74,11 @@ Codec.B64URL = (function () {
         const len_m3 = len - 3 * len_d3; // Remainder: 0, 1, or 2
         
         // Pre-allocate output array length
-        const finalLen = len_d3 + (len_m3 ? 1 : 0);
-        out.length = finalLen + baseLen;
+        const finalLen = len_d3 * 4 + (len_m3 === 2 ? 3 : len_m3 === 1 ? 2 : 0);
 
-        let outIndex = baseLen; // Start after preserved prefix content
+        // encode to bytes
+        const bytes = new Uint8Array(finalLen);
+        let byteIndex = 0; // 输出索引从 baseLen 开始，保留前面预填充的内容
         let h1, h2, h3, h4;
         let i = 0;
 
@@ -90,26 +95,40 @@ Codec.B64URL = (function () {
             h4 = u24 & 0x3f;
 
             // Batch concatenation: 4 chars at once
-            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2] + ENCODE_MAP[h3] + ENCODE_MAP[h4];
+            bytes[byteIndex++] = ENCODE_MAP[h1];
+            bytes[byteIndex++] = ENCODE_MAP[h2];
+            bytes[byteIndex++] = ENCODE_MAP[h3];
+            bytes[byteIndex++] = ENCODE_MAP[h4];
         }
 
         // Slow path: handle remaining 1 or 2 bytes (executed at most once per call)
         if (len_m3 === 2) {
             // 2 bytes = 16 bits → 3 base64 characters (18 bits, last 2 bits zero-padded)
+            // u16 = [byte1: 8 bits][byte2: 8 bits]
+            // enc = [6][6][4+2padding]
             const u16 = (uint8Array[i] << 8) | uint8Array[i + 1];
             h1 = (u16 >> 10) & 0x3f;
             h2 = (u16 >> 4) & 0x3f;
             h3 = (u16 << 2) & 0x3f;
-            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2] + ENCODE_MAP[h3];
+            bytes[byteIndex++] = ENCODE_MAP[h1];
+            bytes[byteIndex++] = ENCODE_MAP[h2];
+            bytes[byteIndex++] = ENCODE_MAP[h3];
         } else if (len_m3 === 1) {
             // 1 byte = 8 bits → 2 base64 characters (12 bits, last 4 bits zero-padded)
             const u8 = uint8Array[i];
             h1 = (u8 >> 2) & 0x3f;
             h2 = (u8 << 4) & 0x3f;
-            out[outIndex++] = ENCODE_MAP[h1] + ENCODE_MAP[h2];
+            bytes[byteIndex++] = ENCODE_MAP[h1];
+            bytes[byteIndex++] = ENCODE_MAP[h2];
         }
 
-        return out.join('');
+        // Convert byte array to string in 16384-character chunks to avoid Function.apply argument limit
+        let result = prefix;
+        for (var pos = 0; pos < byteIndex; pos += 16384) {
+            var end = Math.min(pos + 16384, byteIndex);
+            result += String.fromCharCode.apply(null, bytes.subarray(pos, end));
+        }
+        return result;
     }
 
     /**

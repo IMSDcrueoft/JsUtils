@@ -13,7 +13,7 @@ class ThroughputTest {
             1048576,    // 1MB
         ];
         
-        this.iterations = 100; // 每个大小重复测试次数
+        this.iterations = 200; // 每个大小重复测试次数
         this.mode = this.getExecutionMode();
     }
 

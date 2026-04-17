@@ -23,6 +23,8 @@
 
 const Codec = Object.create(null);
 
+Codec.CONST_ARGUMENTS_LIMIT = 65536; // Maximum arguments for Function.apply (varies by engine, 65536 is safe across modern browsers and Node.js)
+
 /***
  * Base64URL - Encoding/Decoding Utility (33% Data Expansion)
  * - URL-safe character set (no +/=)
@@ -122,10 +124,11 @@ Codec.B64URL = (function () {
             bytes[byteIndex++] = ENCODE_MAP[h2];
         }
 
-        // Convert byte array to string in 16384-character chunks to avoid Function.apply argument limit
+        // Convert byte array to string in 64k-character chunks to avoid Function.apply argument limit
         let result = prefix;
-        for (var pos = 0; pos < byteIndex; pos += 16384) {
-            var end = Math.min(pos + 16384, byteIndex);
+        const chunkSize = Codec.CONST_ARGUMENTS_LIMIT; // Safe chunk size for Function.apply
+        for (var pos = 0; pos < byteIndex; pos += chunkSize) {
+            var end = Math.min(pos + chunkSize, byteIndex);
             result += String.fromCharCode.apply(null, bytes.subarray(pos, end));
         }
         return result;
@@ -281,10 +284,11 @@ Codec.Z85LE = (function () {
             byteIndex += 5;
         }
 
-        // Convert byte array to string in 16384-character chunks to avoid Function.apply argument limit
+        // Convert byte array to string in 64k-character chunks to avoid Function.apply argument limit
         let result = prefix;
-        for (var pos = 0; pos < byteIndex; pos += 16384) {
-            var end = Math.min(pos + 16384, byteIndex);
+        const chunkSize = Codec.CONST_ARGUMENTS_LIMIT; // Safe chunk size for Function.apply
+        for (var pos = 0; pos < byteIndex; pos += chunkSize) {
+            var end = Math.min(pos + chunkSize, byteIndex);
             result += String.fromCharCode.apply(null, bytes.subarray(pos, end));
         }
         return result;
@@ -383,7 +387,7 @@ Codec.Z85LE = (function () {
  * Convert Uint8Array to UTF-8 string
  * 
  * Optimizations:
- * - ASCII fast path: batched String.fromCharCode with 16384 chunk size
+ * - ASCII fast path: batched String.fromCharCode with 64k chunk size
  * - UTF-8 length prediction via arithmetic: bytes = (b>127)+(b>223)+(b>239)
  * - Direct surrogate pair calculation for 4-byte characters (avoids fromCodePoint overhead)
  * 
@@ -397,9 +401,10 @@ Codec.u8ToString = function (u8Array, isAscii) {
     // ASCII mode: each byte maps directly to a character
     if (isAscii) {
         let result = "";
-        // Process in 16384-byte chunks to avoid Function.apply argument limit
-        for (let i = 0; i < u8Array.length; i += 16384) {
-            result += String.fromCharCode.apply(null, u8Array.subarray(i, i + 16384));
+        // Process in 64k-byte chunks to avoid Function.apply argument limit
+        const chunkSize = Codec.CONST_ARGUMENTS_LIMIT; // Safe chunk size for Function.apply
+        for (let i = 0; i < u8Array.length; i += chunkSize) {
+            result += String.fromCharCode.apply(null, u8Array.subarray(i, i + chunkSize));
         }
         return result;
     }

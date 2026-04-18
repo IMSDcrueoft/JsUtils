@@ -186,28 +186,35 @@ class Well1024a extends IRandomGenerator {
 
     /**
      * Initializes the state array using a seed array.
-     * Uses a linear congruential generator to fill the remaining state
-     * if the seed array is shorter than 32 words.
      * @param {number[]} init_key - Array of seed values
      */
     init_by_array(init_key) {
         const state = this.state;
-        let s_;
-        let i = 0;
-        const len = Math.min(init_key.length, 32);
-        
-        // Copy provided seed values into state
-        for (; i < len; ++i) {
-            state[i] = init_key[i];
+
+        // Standard linear feedback initialization.
+        // Formula: v[i] = 1812433253 * (v[i-1] ^ (v[i-1] >> 30)) + i
+        // This is identical to MT19937 initialization.
+        state[0] = init_key[0];
+
+        for (let i = 1; i < 32; i++) {
+            let prev = state[i - 1];
+            state[i] = 1812433253 * (prev ^ (prev >> 30)) + i;
         }
-        
-        // Fill remaining state using LCG with multiplier 1812433253 (same as MT19937)
-        while (i < 32) {
-            s_ = state[i - 1] ^ (state[i - 1] >>> 30);
-            state[i] = (((((s_ & 0xffff0000) >>> 16) * 1812433253) << 16) + 
-                        (s_ & 0x0000ffff) * 1812433253) + i;
-            state[i] >>>= 0; // force to unsigned 32-bit
-            ++i;
+
+        // If multiple seeds are provided, XOR additional seeds into the state.
+        // This is the standard approach used in AbstractWell.
+        const len = Math.min(init_key.length, 32);
+        if (len > 1) {
+            for (let i = 0; i < len; i++) {
+                state[i] ^= init_key[i];
+            }
+        }
+
+        // Defensive check: ensure the state is not all zeros.
+        // The linear recurrence above is extremely unlikely to produce an
+        // all-zero state, but we check anyway for robustness.
+        if (state.every(value => value === 0)) {
+            state[0] = 0xffffffff;  // Force a non-zero value
         }
 
         // Reset index to start of state array

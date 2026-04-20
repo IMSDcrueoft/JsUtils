@@ -70,11 +70,11 @@ Codec.B64URL = (function () {
         if (!uint8Array || !uint8Array.length) return prefix;
 
         const len = uint8Array.length;
-        
+
         // Calculate output length: every 3 bytes → 4 characters
         const len_d3 = (len / 3) | 0;
         const len_m3 = len - 3 * len_d3; // Remainder: 0, 1, or 2
-        
+
         // Pre-allocate output array length
         const finalLen = len_d3 * 4 + (len_m3 === 2 ? 3 : len_m3 === 1 ? 2 : 0);
 
@@ -167,9 +167,9 @@ Codec.B64URL = (function () {
         // Single bitwise OR combines all 4 decoded values
         for (let j = 0; j < len_d4; i += 4, ++j) {
             val = DECODE_MAP[base64Str.charCodeAt(i)] << 18 |
-                  DECODE_MAP[base64Str.charCodeAt(i + 1)] << 12 |
-                  DECODE_MAP[base64Str.charCodeAt(i + 2)] << 6 |
-                  DECODE_MAP[base64Str.charCodeAt(i + 3)];
+                DECODE_MAP[base64Str.charCodeAt(i + 1)] << 12 |
+                DECODE_MAP[base64Str.charCodeAt(i + 2)] << 6 |
+                DECODE_MAP[base64Str.charCodeAt(i + 3)];
 
             bytes[byteIndex++] = (val >> 16) & 0xFF;
             bytes[byteIndex++] = (val >> 8) & 0xFF;
@@ -212,7 +212,7 @@ Codec.B64URL = (function () {
  */
 Codec.Z85LE = (function () {
     "use strict";
-    
+
     // Z85 character set: excludes JSON-sensitive characters (", \, /)
     const Z85 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
 
@@ -254,7 +254,7 @@ Codec.Z85LE = (function () {
 
         let value, nextValue;
         const INV_85 = 1.0 / 85; // Reciprocal for multiplication instead of division
-        
+
         // Process each 32-bit integer → 5 base-85 characters
         // Loop completely unrolled for maximum CPU pipeline efficiency
         for (let i = 0; i < u32Array.length; ++i) {
@@ -265,19 +265,19 @@ Codec.Z85LE = (function () {
             nextValue = Math.floor(value * INV_85);
             bytes[byteIndex + 4] = ENCODE_MAP[value - 85 * nextValue];
             value = nextValue;
-            
+
             nextValue = Math.floor(value * INV_85);
             bytes[byteIndex + 3] = ENCODE_MAP[value - 85 * nextValue];
             value = nextValue;
-            
+
             nextValue = Math.floor(value * INV_85);
             bytes[byteIndex + 2] = ENCODE_MAP[value - 85 * nextValue];
             value = nextValue;
-            
+
             nextValue = Math.floor(value * INV_85);
             bytes[byteIndex + 1] = ENCODE_MAP[value - 85 * nextValue];
             value = nextValue;
-            
+
             nextValue = Math.floor(value * INV_85);
             bytes[byteIndex + 0] = ENCODE_MAP[value - 85 * nextValue];
 
@@ -327,10 +327,10 @@ Codec.Z85LE = (function () {
             // Decode 5 characters to single 32-bit integer
             // Using pre-computed powers: 85^4=52200625, 85^3=614125, 85^2=7225, 85^1=85
             const value = DECODE_MAP[Z85Str.charCodeAt(i)] * 52200625 +     // * 85^4
-                          DECODE_MAP[Z85Str.charCodeAt(i + 1)] * 614125 +   // * 85^3
-                          DECODE_MAP[Z85Str.charCodeAt(i + 2)] * 7225 +     // * 85^2
-                          DECODE_MAP[Z85Str.charCodeAt(i + 3)] * 85 +       // * 85^1
-                          DECODE_MAP[Z85Str.charCodeAt(i + 4)];             // * 85^0
+                DECODE_MAP[Z85Str.charCodeAt(i + 1)] * 614125 +   // * 85^3
+                DECODE_MAP[Z85Str.charCodeAt(i + 2)] * 7225 +     // * 85^2
+                DECODE_MAP[Z85Str.charCodeAt(i + 3)] * 85 +       // * 85^1
+                DECODE_MAP[Z85Str.charCodeAt(i + 4)];             // * 85^0
 
             result[valueIndex] = value;
             ++valueIndex;
@@ -357,7 +357,7 @@ Codec.Z85LE = (function () {
         // Create padded buffer (zero-filled padding)
         const view = new Uint8Array(len + padding);
         view.set(u8Array);
-        
+
         // Delegate to 32-bit encoder
         return encode_u32(new Uint32Array(view.buffer), out);
     }
@@ -397,7 +397,7 @@ Codec.Z85LE = (function () {
  */
 Codec.u8ToString = function (u8Array, isAscii) {
     "use strict";
-    
+
     // ASCII mode: each byte maps directly to a character
     if (isAscii) {
         let result = "";
@@ -408,32 +408,32 @@ Codec.u8ToString = function (u8Array, isAscii) {
         }
         return result;
     }
-    
+
     // UTF-8 decoding with branch-prediction-friendly length detection
     let str = "";
     let pos = 0;
     while (pos < u8Array.length) {
         const byte1 = u8Array[pos++];
-        
+
         // Arithmetic length detection: avoids multiple if-else branches
         // byte1>127 → 1, byte1>223 → +1, byte1>239 → +1
         const bytes = (byte1 > 127) + (byte1 > 223) + (byte1 > 239);
-        
+
         if (pos + bytes > u8Array.length) break;
-        
+
         if (bytes) {
             if (bytes === 3) {
                 // 4-byte character (Emoji, rare CJK, etc.)
                 const b2 = u8Array[pos++];
                 const b3 = u8Array[pos++];
                 const b4 = u8Array[pos++];
-                
+
                 // Extract 21-bit code point
-                let codePoint = ((byte1 & 0x07) << 18) | 
-                                ((b2 & 0x3F) << 12) | 
-                                ((b3 & 0x3F) << 6) | 
-                                (b4 & 0x3F);
-                
+                let codePoint = ((byte1 & 0x07) << 18) |
+                    ((b2 & 0x3F) << 12) |
+                    ((b3 & 0x3F) << 6) |
+                    (b4 & 0x3F);
+
                 // Convert to UTF-16 surrogate pair
                 codePoint -= 0x10000;
                 const highSurrogate = 0xD800 + (codePoint >> 10);
@@ -444,9 +444,9 @@ Codec.u8ToString = function (u8Array, isAscii) {
                 str += String.fromCharCode(((byte1 & 0x1F) << 6) | (u8Array[pos++] & 0x3F));
             } else {
                 // 3-byte character (CJK, Arabic, etc.)
-                str += String.fromCharCode(((byte1 & 0x0F) << 12) | 
-                                           ((u8Array[pos++] & 0x3F) << 6) | 
-                                           (u8Array[pos++] & 0x3F));
+                str += String.fromCharCode(((byte1 & 0x0F) << 12) |
+                    ((u8Array[pos++] & 0x3F) << 6) |
+                    (u8Array[pos++] & 0x3F));
             }
         } else {
             // 1-byte character (ASCII)
@@ -471,7 +471,7 @@ Codec.u8ToString = function (u8Array, isAscii) {
  */
 Codec.stringToU8 = function (str, isAscii) {
     "use strict";
-    
+
     // ASCII mode: each character takes lower 8 bits
     if (isAscii) {
         const arr = new Uint8Array(str.length);
@@ -480,13 +480,13 @@ Codec.stringToU8 = function (str, isAscii) {
         }
         return arr;
     }
-    
+
     // UTF-8 encoding with dynamic buffer growth
     const len = str.length;
     // Initial capacity: len + 50% (accounts for multi-byte characters)
     let buf = new Uint8Array(len + (len >> 1));
     let pos = 0;
-    
+
     for (let i = 0; i < len; ++i) {
         // Grow buffer if insufficient space (max 5 bytes per iteration)
         if (pos + 5 > buf.length) {
@@ -494,9 +494,9 @@ Codec.stringToU8 = function (str, isAscii) {
             newBuf.set(buf);
             buf = newBuf;
         }
-        
+
         const code = str.charCodeAt(i);
-        
+
         if (code < 128) {
             // 1-byte ASCII
             buf[pos++] = code;
@@ -519,9 +519,160 @@ Codec.stringToU8 = function (str, isAscii) {
             buf[pos++] = 128 | (63 & code);
         }
     }
-    
+
     // Zero-copy truncation to actual used length
     return buf.subarray(0, pos);
 };
+
+(function () {
+    "use strict";
+
+    const MASK = new Uint32Array(32);
+    for (let i = 1; i < 31; ++i) {
+        MASK[i] = (1 << i) - 1;
+    }
+    MASK[31] = 0x7FFFFFFF;
+
+    /***
+     * Packs an array of numbers into a compact Uint8Array using fixed bit width.
+     * This reduces memory footprint significantly for values that fit in fewer bits.
+     * @param numberArray {number[]} - Source numbers to pack
+     * @param bitWide {number} - Bits per number (1-31)
+     * @returns {Uint8Array} - Compact binary representation
+     */
+    Codec.packFixedWidth = function (numberArray, bitWide) {
+        "use strict";
+        bitWide = bitWide | 0; // Ensure integer
+        if (bitWide < 1 || bitWide > 31) {
+            throw new RangeError("bitWide must be in range 1-31");
+        }
+
+        const len = numberArray.length;
+        const dataBits = len * bitWide;
+        const dataBytes = (dataBits + 7) >>> 3;
+        const padding = (dataBytes << 3) - dataBits;  // Unused bits in last byte (0-7)
+
+        const u8Array = new Uint8Array(1 + dataBytes);
+
+        // Pack header: upper 5 bits = bitWide, lower 3 bits = padding length
+        u8Array[0] = (bitWide << 3) | padding;
+
+        const bitMask = MASK[bitWide];
+
+        // Bit buffer for byte-level packing (max 24 bits to avoid 32-bit overflow)
+        let buffer = 0;
+        let bitCount = 0;
+        let byteIndex = 1;
+
+        for (let i = 0; i < len; i++) {
+            const val = numberArray[i] & bitMask;  // Truncate to specified bit width
+
+            // Prevent 32-bit overflow when adding new value to buffer
+            const extraBitCount = (bitCount + bitWide) - 32;
+            if (extraBitCount > 0) {
+                // Push the part that fits before overflow
+                buffer = (buffer << (bitWide - extraBitCount)) | (val >> extraBitCount);
+                // Write 4 full bytes
+                u8Array[byteIndex++] = (buffer >>> 24) & 0xFF;
+                u8Array[byteIndex++] = (buffer >>> 16) & 0xFF;
+                u8Array[byteIndex++] = (buffer >>> 8) & 0xFF;
+                u8Array[byteIndex++] = buffer & 0xFF;
+                // Store the overflow portion
+                buffer = val & MASK[extraBitCount];
+                bitCount = extraBitCount;
+                continue;
+            }
+
+            // Append value to bit buffer
+            buffer = (buffer << bitWide) | val;
+            bitCount += bitWide;
+
+            // Extract complete bytes when possible
+            while (bitCount >= 8) {
+                bitCount -= 8;
+                u8Array[byteIndex++] = (buffer >> bitCount) & 0xFF;
+                buffer &= MASK[bitCount];
+            }
+        }
+
+        // Flush remaining bits (left-aligned in last byte)
+        if (bitCount > 0) {
+            u8Array[byteIndex] = buffer << (8 - bitCount);
+        }
+
+        return u8Array;
+    };
+
+    /***
+     * Unpacks a compact bit array back into regular JavaScript numbers.
+     * Reverses the packing performed by packFixedWidth.
+     * @param u8Array {Uint8Array} - Previously packed binary data
+     * @returns {number[]} - Restored number array
+     */
+    Codec.unpackFixedWidth = function (u8Array) {
+        "use strict";
+        if (u8Array.length < 1) {
+            throw new Error("Invalid data: array is empty");
+        }
+
+        // Extract metadata from header byte
+        const header = u8Array[0];
+        const bitWide = header >>> 3;      // Bits 3-7 hold the width (1-31)
+        const padding = header & 0x7;      // Bits 0-2 hold padding count
+
+        if (bitWide === 0) {
+            throw new RangeError("Invalid zero bitWide value");
+        }
+
+        // Calculate how many numbers we'll reconstruct
+        const len = u8Array.length;
+        const dataBytes = len - 1;
+        const totalBits = dataBytes * 8 - padding;
+        const arrayLen = Math.floor(totalBits / bitWide);
+        const numberArray = new Array(arrayLen + 7);  // Extra space for safety margin
+
+        const bitMask = MASK[bitWide];
+
+        let buffer = 0;
+        let bitCount = 0;
+        let arrayIndex = 0;
+
+        // Process payload bytes while managing 32-bit buffer limits
+        for (let i = 1; i < len; ++i) {
+            const extraBitCount = bitCount - 24;  // Check if next byte would overflow 32 bits
+
+            if (extraBitCount > 0) {
+                // Handle the overflow scenario (only happens with bitWide > 24)
+                buffer = ((buffer << (8 - extraBitCount)) | (u8Array[i] >>> extraBitCount)) >>> 0;
+
+                // Extract a single value from the buffer
+                bitCount = 32 - bitWide;
+                const val = (buffer >>> bitCount) & bitMask;
+                buffer = buffer & MASK[bitCount];  // Clear consumed bits
+
+                // Add the overflow portion back to buffer
+                buffer = ((buffer << extraBitCount) | (u8Array[i] & MASK[extraBitCount])) >>> 0;
+                bitCount += extraBitCount;
+                numberArray[arrayIndex++] = val;
+            } else {
+                // Normal case: just append the byte to buffer
+                buffer = ((buffer << 8) | u8Array[i]) >>> 0;
+                bitCount += 8;
+
+                // Extract as many complete values as possible
+                while (bitCount >= bitWide) {
+                    bitCount -= bitWide;
+                    const val = (buffer >>> bitCount) & bitMask;
+                    buffer = (buffer & MASK[bitCount]) >>> 0;
+                    numberArray[arrayIndex++] = val;
+                }
+            }
+        }
+
+        // Trim array to actual size
+        numberArray.length = arrayLen;
+        return numberArray;
+    };
+})();
 
 exports.Codec = Codec;

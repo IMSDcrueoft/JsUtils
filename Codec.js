@@ -554,15 +554,15 @@ Codec.stringToU8 = function (str, isAscii) {
 
         const u8Array = new Uint8Array(1 + dataBytes);
 
-        // Pack tail: upper 5 bits = bitWide, lower 3 bits = padding length
-        u8Array[dataBytes] = (bitWide << 3) | padding;
+        // Pack header: upper 5 bits = bitWide, lower 3 bits = padding length
+        u8Array[0] = (bitWide << 3) | padding;
 
         const bitMask = MASK[bitWide];
 
         // Bit buffer for byte-level packing (max 24 bits to avoid 32-bit overflow)
         let buffer = 0;
         let bitCount = 0;
-        let byteIndex = 0;
+        let byteIndex = 1;
 
         for (let i = 0; i < len; i++) {
             const val = numberArray[i] & bitMask;  // Truncate to specified bit width
@@ -615,18 +615,19 @@ Codec.stringToU8 = function (str, isAscii) {
             throw new Error("Invalid data: array is empty");
         }
 
-        // Extract metadata from tail byte
-        const tail = u8Array[u8Array.length - 1];
-        const bitWide = tail >>> 3;      // Bits 3-7 hold the width (1-31)
-        const padding = tail & 0x7;      // Bits 0-2 hold padding count
+        // Extract metadata from header byte
+        const header = u8Array[0];
+        const bitWide = header >>> 3;      // Bits 3-7 hold the width (1-31)
+        const padding = header & 0x7;      // Bits 0-2 hold padding count
 
         if (bitWide === 0) {
             throw new RangeError("Invalid zero bitWide value");
         }
 
         // Calculate how many numbers we'll reconstruct
-        const len = u8Array.length - 1; // Exclude tail byte
-        const totalBits = len * 8 - padding;
+        const len = u8Array.length;
+        const dataBytes = len - 1;
+        const totalBits = dataBytes * 8 - padding;
         const arrayLen = Math.floor(totalBits / bitWide);
         const numberArray = new Array(arrayLen + 7);  // Extra space for safety margin
 
@@ -635,7 +636,7 @@ Codec.stringToU8 = function (str, isAscii) {
         let arrayIndex = 0;
 
         // Process payload bytes while managing 32-bit buffer limits
-        for (let i = 0; i < len; ++i) {
+        for (let i = 1; i < len; ++i) {
             // fill buffer up to 24 bits to avoid overflow when adding new byte
             while (bitCount <= 24 && i < len) {
                 buffer = (buffer << 8) | u8Array[i++];

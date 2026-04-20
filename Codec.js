@@ -631,41 +631,42 @@ Codec.stringToU8 = function (str, isAscii) {
         const arrayLen = Math.floor(totalBits / bitWide);
         const numberArray = new Array(arrayLen + 7);  // Extra space for safety margin
 
-        const bitMask = MASK[bitWide];
-
         let buffer = 0;
         let bitCount = 0;
         let arrayIndex = 0;
 
         // Process payload bytes while managing 32-bit buffer limits
         for (let i = 1; i < len; ++i) {
-            const extraBitCount = bitCount - 24;  // Check if next byte would overflow 32 bits
-
-            if (extraBitCount > 0) {
-                // Handle the overflow scenario (only happens with bitWide > 24)
-                buffer = ((buffer << (8 - extraBitCount)) | (u8Array[i] >>> extraBitCount)) >>> 0;
-
-                // Extract a single value from the buffer
-                bitCount = 32 - bitWide;
-                const val = (buffer >>> bitCount) & bitMask;
-                buffer = buffer & MASK[bitCount];  // Clear consumed bits
-
-                // Add the overflow portion back to buffer
-                buffer = ((buffer << extraBitCount) | (u8Array[i] & MASK[extraBitCount])) >>> 0;
-                bitCount += extraBitCount;
-                numberArray[arrayIndex++] = val;
-            } else {
-                // Normal case: just append the byte to buffer
-                buffer = ((buffer << 8) | u8Array[i]) >>> 0;
+            // fill buffer up to 24 bits to avoid overflow when adding new byte
+            while (bitCount <= 24 && i < len) {
+                buffer = (buffer << 8) | u8Array[i++];
                 bitCount += 8;
+            }
 
+            if (bitCount >= bitWide) {
                 // Extract as many complete values as possible
                 while (bitCount >= bitWide) {
                     bitCount -= bitWide;
-                    const val = (buffer >>> bitCount) & bitMask;
-                    buffer = (buffer & MASK[bitCount]) >>> 0;
+                    const val = (buffer >>> bitCount);
+                    buffer = (buffer & MASK[bitCount]);
                     numberArray[arrayIndex++] = val;
                 }
+
+                --i; // Re-process current byte if it wasn't fully consumed
+            } else {
+                const extraBitCount = bitCount - 24;  // Next byte would overflow 32 bits
+                // Handle the overflow scenario (only happens with bitWide > 24)
+                buffer = ((buffer << (8 - extraBitCount)) | (u8Array[i] >>> extraBitCount));
+
+                // Extract a single value from the buffer
+                bitCount = 32 - bitWide;
+                const val = (buffer >>> bitCount);
+                buffer = buffer & MASK[bitCount];  // Clear consumed bits
+
+                // Add the overflow portion back to buffer
+                buffer = ((buffer << extraBitCount) | (u8Array[i] & MASK[extraBitCount]));
+                bitCount += extraBitCount;
+                numberArray[arrayIndex++] = val;
             }
         }
 

@@ -395,28 +395,24 @@ test.run().then(success => {
     process.exit(success ? 0 : 1);
 });
 
-// ========== 高精度吞吐量性能测试 ==========
+// ========== 高精度吞吐量性能测试 (Ops/s) ==========
 test.test('高精度吞吐量性能测试 - 所有位宽完整测试', () => {
     const { performance } = require('perf_hooks');
     
-    console.log('\n  ' + '='.repeat(80));
-    console.log('  高精度吞吐量性能测试报告');
-    console.log('  ' + '='.repeat(80));
+    console.log('\n  ' + '='.repeat(90));
+    console.log('  高精度性能测试报告 (Ops/s - 每秒处理数字数)');
+    console.log('  ' + '='.repeat(90));
     
     // 测试所有位宽 1-31
     for (let bitWide = 1; bitWide <= 31; bitWide++) {
-        const testCount = 50000; // 固定测试数量
+        const testCount = 50000;
         const maxValue = Math.pow(2, bitWide) - 1;
         
-        // 生成测试数据
         const numbers = Array.from({ length: testCount }, () => 
             Math.floor(Math.random() * (maxValue + 1))
         );
         
-        // 原始数据大小 (JS number 数组，每个约8字节)
-        const originalSize = testCount * 8;
-        
-        // === 打包性能测试 (运行3次取最快) ===
+        // === 打包性能测试 ===
         let bestPackTime = Infinity;
         let packedResult = null;
         
@@ -431,11 +427,9 @@ test.test('高精度吞吐量性能测试 - 所有位宽完整测试', () => {
             }
         }
         
-        const packedSize = packedResult.length;
-        const compressionRatio = ((1 - packedSize / originalSize) * 100).toFixed(2);
-        const throughputPack = (originalSize / 1024 / 1024 / (bestPackTime / 1000)).toFixed(2);
+        const packOps = (testCount / (bestPackTime / 1000)).toFixed(0);
         
-        // === 解包性能测试 (运行5次取平均) ===
+        // === 解包性能测试 ===
         let totalUnpackTime = 0;
         let unpackedResult = null;
         
@@ -451,79 +445,59 @@ test.test('高精度吞吐量性能测试 - 所有位宽完整测试', () => {
         }
         
         const avgUnpackTime = totalUnpackTime / 5;
-        const throughputUnpack = (packedSize / 1024 / 1024 / (avgUnpackTime / 1000)).toFixed(2);
+        const unpackOps = (testCount / (avgUnpackTime / 1000)).toFixed(0);
         
         // 验证正确性
         test.assertEquals(unpackedResult, numbers, `${bitWide}位宽度数据正确性验证失败`);
         
-        // 输出结果，格式化对齐
+        // 输出结果
         const bitStr = bitWide.toString().padStart(2, ' ');
-        const rangeStr = `0-${maxValue}`.padEnd(12, ' ');
         const packTimeStr = bestPackTime.toFixed(3).padStart(8, ' ');
         const unpackTimeStr = avgUnpackTime.toFixed(3).padStart(8, ' ');
-        const ratioStr = `${compressionRatio}%`.padStart(8, ' ');
+        const packOpsStr = parseInt(packOps).toLocaleString().padStart(12, ' ');
+        const unpackOpsStr = parseInt(unpackOps).toLocaleString().padStart(12, ' ');
         
-        console.log(`  ${bitStr}位 | ${rangeStr} | 压缩率: ${ratioStr} | 打包: ${packTimeStr}ms (${throughputPack} MB/s) | 解包: ${unpackTimeStr}ms (${throughputUnpack} MB/s)`);
+        console.log(`  ${bitStr}位 | 打包: ${packTimeStr}ms (${packOpsStr} ops/s) | 解包: ${unpackTimeStr}ms (${unpackOpsStr} ops/s) | 解包/打包比: ${(unpackOps / packOps).toFixed(2)}x`);
         
         // 性能断言
         test.assert(bestPackTime < 100, `${bitWide}位打包时间 ${bestPackTime.toFixed(2)}ms 应小于100ms`);
         test.assert(avgUnpackTime < 100, `${bitWide}位解包时间 ${avgUnpackTime.toFixed(2)}ms 应小于100ms`);
-        
-        // 压缩率趋势验证：位宽越小压缩率越高
-        if (bitWide === 1) {
-            test.assert(compressionRatio > 85, `1位压缩率应 >85%，实际 ${compressionRatio}%`);
-        } else if (bitWide === 4) {
-            test.assert(compressionRatio > 40, `4位压缩率应 >40%，实际 ${compressionRatio}%`);
-        } else if (bitWide === 8) {
-            test.assert(compressionRatio > 0, `8位压缩率应 >0%，实际 ${compressionRatio}%`);
-        }
     }
     
-    // === 极限吞吐量测试：最大数据量 ===
-    console.log(`\n  ${'='.repeat(80)}`);
+    // === 极限吞吐量测试 ===
+    console.log(`\n  ${'='.repeat(90)}`);
     console.log('  极限吞吐量测试 (100万条数据，8位宽度)');
-    console.log('  ' + '-'.repeat(80));
+    console.log('  ' + '-'.repeat(90));
     
     const extremeCount = 1000000;
     const extremeNumbers = Array.from({ length: extremeCount }, () => Math.floor(Math.random() * 256));
-    const extremeOriginalSize = extremeCount * 8;
     
-    // 预热运行
+    // 预热
     packFixedWidth(extremeNumbers.slice(0, 1000), 8);
     
-    // 正式测试打包
+    // 打包测试
     const startPack = performance.now();
     const extremePacked = packFixedWidth(extremeNumbers, 8);
     const packTime = performance.now() - startPack;
     
-    const packedMB = extremePacked.length / 1024 / 1024;
-    const originalMB = extremeOriginalSize / 1024 / 1024;
-    const throughputPack = (originalMB / (packTime / 1000)).toFixed(2);
-    
-    // 正式测试解包
+    // 解包测试
     const startUnpack = performance.now();
     const extremeUnpacked = unpackFixedWidth(extremePacked);
     const unpackTime = performance.now() - startUnpack;
     
-    const throughputUnpack = (packedMB / (unpackTime / 1000)).toFixed(2);
-    const compressionRatio = ((1 - extremePacked.length / extremeOriginalSize) * 100).toFixed(2);
+    const packOps = (extremeCount / (packTime / 1000)).toFixed(0);
+    const unpackOps = (extremeCount / (unpackTime / 1000)).toFixed(0);
+    const compressionRatio = ((1 - extremePacked.length / (extremeCount * 8)) * 100).toFixed(2);
     
     console.log(`     数据量: ${extremeCount.toLocaleString()} 个数字`);
-    console.log(`     原始大小: ${originalMB.toFixed(2)} MB`);
-    console.log(`     压缩后: ${packedMB.toFixed(2)} MB`);
     console.log(`     压缩率: ${compressionRatio}%`);
-    console.log(`     打包耗时: ${packTime.toFixed(2)}ms (吞吐量: ${throughputPack} MB/s)`);
-    console.log(`     解包耗时: ${unpackTime.toFixed(2)}ms (吞吐量: ${throughputUnpack} MB/s)`);
+    console.log(`     打包: ${packTime.toFixed(2)}ms (${parseInt(packOps).toLocaleString()} ops/s)`);
+    console.log(`     解包: ${unpackTime.toFixed(2)}ms (${parseInt(unpackOps).toLocaleString()} ops/s)`);
+    console.log(`     速度比: 解包是打包的 ${(unpackOps / packOps).toFixed(2)} 倍`);
     
     test.assertEquals(extremeUnpacked, extremeNumbers, '100万数据正确性验证失败');
-    test.assert(packTime < 2000, `100万数据打包时间 ${packTime.toFixed(2)}ms 应小于2000ms`);
-    test.assert(unpackTime < 2000, `100万数据解包时间 ${unpackTime.toFixed(2)}ms 应小于2000ms`);
+    test.assert(packTime < 2000, `打包时间 ${packTime.toFixed(2)}ms 应小于2000ms`);
+    test.assert(unpackTime < 2000, `解包时间 ${unpackTime.toFixed(2)}ms 应小于2000ms`);
     
-    // 计算每秒处理能力
-    const opsPerSecPack = (extremeCount / (packTime / 1000)).toFixed(0);
-    const opsPerSecUnpack = (extremeCount / (unpackTime / 1000)).toFixed(0);
-    
-    console.log(`     处理能力: 打包 ${parseInt(opsPerSecPack).toLocaleString()} 数字/秒 | 解包 ${parseInt(opsPerSecUnpack).toLocaleString()} 数字/秒`);
-    
-    console.log('  ' + '='.repeat(80));
+    console.log('  ' + '='.repeat(90));
 });

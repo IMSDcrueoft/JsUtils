@@ -168,10 +168,10 @@ class Well1024a extends IRandomGenerator {
         }
 
         /** @type {Uint32Array} State array of 32 32-bit words (1024 bits total) */
-        this.state = new Uint32Array(32);
+        this._state = new Uint32Array(32);
         
         /** @type {number} Current index into the state array (0-31) */
-        this.index = 0;
+        this._index = 0;
 
         this.init_generateRand(seed);
     }
@@ -189,7 +189,7 @@ class Well1024a extends IRandomGenerator {
      * @param {number[]} init_key - Array of seed values
      */
     init_by_array(init_key) {
-        const state = this.state;
+        const state = this._state;
 
         // Standard linear feedback initialization.
         // Formula: v[i] = 1812433253 * (v[i-1] ^ (v[i-1] >> 30)) + i
@@ -218,7 +218,7 @@ class Well1024a extends IRandomGenerator {
         }
 
         // Reset index to start of state array
-        this.index = 0;
+        this._index = 0;
     }
 
     /**
@@ -227,8 +227,8 @@ class Well1024a extends IRandomGenerator {
      */
     cloneState() {
         return {
-            state: new Uint32Array(this.state),
-            index: this.index
+            state: new Uint32Array(this._state),
+            index: this._index
         };
     }
 
@@ -237,8 +237,8 @@ class Well1024a extends IRandomGenerator {
      * @param {{state: Uint32Array, index: number}} stateObj - The state to restore
      */
     restoreState(stateObj) {
-        this.state = stateObj.state;
-        this.index = stateObj.index;
+        this._state = stateObj.state;
+        this._index = stateObj.index;
     }
 
     /**
@@ -259,8 +259,8 @@ class Well1024a extends IRandomGenerator {
      * @returns {number} A random 32-bit unsigned integer
      */
     rand_uint32() {
-        const state = this.state;
-        let index = this.index;
+        const state = this._state;
+        let index = this._index;
         
         // Retrieve state values at specific offsets (the "WELL" indices)
         const v_m1 = state[(index + 3) & 31];   // offset 3
@@ -284,7 +284,7 @@ class Well1024a extends IRandomGenerator {
         state[index] = z3;
         
         // Advance index and compute output with additional tempering
-        this.index = nextIndex;
+        this._index = nextIndex;
         const output = (z0 ^ (z0 << 11) ^ z1 ^ (z1 << 7) ^ z2 ^ (z2 << 13)) >>> 0;
         state[nextIndex] = output;
         

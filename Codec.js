@@ -557,7 +557,7 @@ Codec.stringToU8 = function (str, isAscii) {
         // Pack header: upper 5 bits = bitWide, lower 3 bits = padding length
         u8Array[0] = (bitWide << 3) | padding;
 
-        const bitMask = MASK[bitWide];
+        const MASK_WIDE = MASK[bitWide];
 
         // Bit buffer for byte-level packing (max 24 bits to avoid 32-bit overflow)
         let buffer = 0;
@@ -565,7 +565,7 @@ Codec.stringToU8 = function (str, isAscii) {
         let byteIndex = 1;
 
         for (let i = 0; i < len; i++) {
-            const val = numberArray[i] & bitMask;  // Truncate to specified bit width
+            const val = numberArray[i] & MASK_WIDE;  // Truncate to specified bit width
 
             // Prevent 32-bit overflow when adding new value to buffer
             const extraBitCount = (bitCount + bitWide) - 32;
@@ -635,6 +635,9 @@ Codec.stringToU8 = function (str, isAscii) {
         let bitCount = 0;
         let arrayIndex = 0;
 
+        const pathBitWide = 32 - bitWide;
+        const MASK_PATCH_WIDE = MASK[pathBitWide];
+
         // Process payload bytes while managing 32-bit buffer limits
         for (let i = 1; i < len; ++i) {
             // fill buffer up to 24 bits to avoid overflow when adding new byte
@@ -659,13 +662,12 @@ Codec.stringToU8 = function (str, isAscii) {
                 buffer = ((buffer << (8 - extraBitCount)) | (u8Array[i] >>> extraBitCount));
 
                 // Extract a single value from the buffer
-                bitCount = 32 - bitWide;
-                const val = (buffer >>> bitCount);
-                buffer = buffer & MASK[bitCount];  // Clear consumed bits
+                const val = (buffer >>> pathBitWide);
+                buffer = buffer & MASK_PATCH_WIDE;  // Clear consumed bits
 
                 // Add the overflow portion back to buffer
                 buffer = ((buffer << extraBitCount) | (u8Array[i] & MASK[extraBitCount]));
-                bitCount += extraBitCount;
+                bitCount = pathBitWide + extraBitCount;
                 numberArray[arrayIndex++] = val;
             }
         }

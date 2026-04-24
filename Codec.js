@@ -562,7 +562,7 @@ Codec.stringToU8 = function (str, isAscii) {
         // Bit buffer for byte-level packing (max 24 bits to avoid 32-bit overflow)
         let buffer = 0;
         let bitCount = 0;
-        let byteIndex = 1;
+        let wordIndex = 1;
 
         for (let i = 0; i < len; i++) {
             const val = numberArray[i] & MASK_WIDE;  // Truncate to specified bit width
@@ -571,31 +571,31 @@ Codec.stringToU8 = function (str, isAscii) {
             const extraBitCount = (bitCount + bitWide) - 32;
             if (extraBitCount > 0) {
                 // Push the part that fits before overflow
-                buffer = (buffer << (bitWide - extraBitCount)) | (val >> extraBitCount);
+                buffer |= val << bitCount;
                 // Write 4 full bytes
-                u16Array[byteIndex++] = buffer >>> 16;
-                u16Array[byteIndex++] = buffer & 0xFFFF;
+                u16Array[wordIndex++] = buffer & 0xFFFF;
+                u16Array[wordIndex++] = buffer >>> 16;
                 // Store the overflow portion
-                buffer = val & MASK[extraBitCount];
+                buffer = val >>> (bitWide - extraBitCount);
                 bitCount = extraBitCount;
                 continue;
             }
 
             // Append value to bit buffer
-            buffer = (buffer << bitWide) | val;
+            buffer |= val << bitCount;
             bitCount += bitWide;
 
             // Extract complete bytes when possible
             while (bitCount >= 16) {
                 bitCount -= 16;
-                u16Array[byteIndex++] = (buffer >> bitCount) & 0xFFFF;
-                buffer &= MASK[bitCount];
+                u16Array[wordIndex++] = buffer & 0xFFFF;
+                buffer >>>= 16;
             }
         }
 
-        // Flush remaining bits (left-aligned in last byte)
+        // Flush remaining bits (right-aligned in last byte)
         if (bitCount > 0) {
-            u16Array[byteIndex] = buffer << (16 - bitCount);
+            u16Array[wordIndex] = buffer & 0xFFFF;
         }
 
         return u16Array;
@@ -628,8 +628,8 @@ Codec.stringToU8 = function (str, isAscii) {
 
         // Calculate how many numbers we'll reconstruct
         const len = u16Array.length;
-        const dataBytes = len - 1;
-        const totalBits = dataBytes * 16 - padding;
+        const dataWords = len - 1;
+        const totalBits = (dataWords << 4) - padding;
         const arrayLen = Math.floor(totalBits / bitWide);
         const numberArray = new Array(arrayLen + 15);  // Extra space for safety margin
 
@@ -637,41 +637,44 @@ Codec.stringToU8 = function (str, isAscii) {
         let bitCount = 0;
         let arrayIndex = 0;
 
-        const pathBitWide = 32 - bitWide;
-        const MASK_PATCH_WIDE = MASK[pathBitWide];
+        const patchBitWide = 32 - bitWide;
+        const MASK_WIDE = MASK[bitWide];
 
         // Process payload bytes while managing 32-bit buffer limits
-        for (let i = 1; i < len; ++i) {
-            // fill buffer up to 24 bits to avoid overflow when adding new byte
+        for (let i = 1; i < len;) {
+            // fill buffer up to 32 bits to avoid overflow when adding new byte
             while (bitCount <= 16 && i < len) {
-                buffer = (buffer << 16) | u16Array[i++];
+                buffer |= u16Array[i++] << bitCount;
                 bitCount += 16;
             }
-
             if (bitCount >= bitWide) {
                 // Extract as many complete values as possible
                 while (bitCount >= bitWide) {
                     bitCount -= bitWide;
-                    const val = (buffer >>> bitCount);
-                    buffer = (buffer & MASK[bitCount]);
+                    const val = (buffer & MASK_WIDE);
+                    buffer >>>= bitWide;  // Shift out the consumed bits
                     numberArray[arrayIndex++] = val;
                 }
-
-                --i; // Re-process current byte if it wasn't fully consumed
             } else {
                 const extraBitCount = bitCount - 16;  // Next byte would overflow 32 bits (16 + bitCount - 32)
-                // Handle the overflow scenario (only happens with bitWide > 24)
-                buffer = ((buffer << (16 - extraBitCount)) | (u16Array[i] >>> extraBitCount));
+                // Handle the overflow scenario (only happens with bitWide > 16)
+                buffer |= u16Array[i] << bitCount;
 
                 // Extract a single value from the buffer
-                const val = (buffer >>> pathBitWide);
-                buffer = buffer & MASK_PATCH_WIDE;  // Clear consumed bits
+                const val = (buffer & MASK_WIDE);
+                buffer >>>= bitWide;  // Clear consumed bits
 
                 // Add the overflow portion back to buffer
-                buffer = ((buffer << extraBitCount) | (u16Array[i] & MASK[extraBitCount]));
-                bitCount = pathBitWide + extraBitCount;
+                buffer |= (u16Array[i] >>> (16 - extraBitCount)) << patchBitWide;
+                bitCount = patchBitWide + extraBitCount;
                 numberArray[arrayIndex++] = val;
+
+                i++; // Move to next word after handling overflow
             }
+        }
+
+        if (bitCount > 0) {
+            numberArray[arrayIndex++] = buffer & MASK_WIDE;
         }
 
         // Trim array to actual size

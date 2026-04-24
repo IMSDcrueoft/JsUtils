@@ -538,7 +538,7 @@ Codec.stringToU8 = function (str, isAscii) {
      * This reduces memory footprint significantly for values that fit in fewer bits.
      * @param numberArray {number[]} - Source numbers to pack
      * @param bitWide {number} - Bits per number (1-31)
-     * @returns {Uint8Array} - Compact binary representation
+     * @returns {Uint16Array} - Compact binary representation
      */
     Codec.packFixedWidth = function (numberArray, bitWide) {
         "use strict";
@@ -549,13 +549,13 @@ Codec.stringToU8 = function (str, isAscii) {
 
         const len = numberArray.length;
         const dataBits = len * bitWide;
-        const dataBytes = (dataBits + 7) >>> 3;
-        const padding = (dataBytes << 3) - dataBits;  // Unused bits in last byte (0-7)
+        const dataWords = (dataBits + 15) >>> 4; // Number of 16-bit words needed
+        const padding = (dataWords << 4) - dataBits;  // Unused bits in last word (0-15)
 
-        const u8Array = new Uint8Array(1 + dataBytes);
+        const u16Array = new Uint16Array(1 + dataWords);
 
-        // Pack header: upper 5 bits = bitWide, lower 3 bits = padding length
-        u8Array[0] = (bitWide << 3) | padding;
+        // Pack header: upper byte = bitWide, lower byte = padding length
+        u16Array[0] = (bitWide << 8) | padding;
 
         const MASK_WIDE = MASK[bitWide];
 
@@ -573,10 +573,8 @@ Codec.stringToU8 = function (str, isAscii) {
                 // Push the part that fits before overflow
                 buffer = (buffer << (bitWide - extraBitCount)) | (val >> extraBitCount);
                 // Write 4 full bytes
-                u8Array[byteIndex++] = (buffer >>> 24) & 0xFF;
-                u8Array[byteIndex++] = (buffer >>> 16) & 0xFF;
-                u8Array[byteIndex++] = (buffer >>> 8) & 0xFF;
-                u8Array[byteIndex++] = buffer & 0xFF;
+                u16Array[byteIndex++] = buffer >>> 16;
+                u16Array[byteIndex++] = buffer & 0xFFFF;
                 // Store the overflow portion
                 buffer = val & MASK[extraBitCount];
                 bitCount = extraBitCount;
@@ -588,48 +586,52 @@ Codec.stringToU8 = function (str, isAscii) {
             bitCount += bitWide;
 
             // Extract complete bytes when possible
-            while (bitCount >= 8) {
-                bitCount -= 8;
-                u8Array[byteIndex++] = (buffer >> bitCount) & 0xFF;
+            while (bitCount >= 16) {
+                bitCount -= 16;
+                u16Array[byteIndex++] = (buffer >> bitCount) & 0xFFFF;
                 buffer &= MASK[bitCount];
             }
         }
 
         // Flush remaining bits (left-aligned in last byte)
         if (bitCount > 0) {
-            u8Array[byteIndex] = buffer << (8 - bitCount);
+            u16Array[byteIndex] = buffer << (16 - bitCount);
         }
 
-        return u8Array;
+        return u16Array;
     };
 
     /***
      * Unpacks a compact bit array back into regular JavaScript numbers.
      * Reverses the packing performed by packFixedWidth.
-     * @param u8Array {Uint8Array} - Previously packed binary data
+     * @param u16Array {Uint16Array} - Previously packed binary data
      * @returns {number[]} - Restored number array
      */
-    Codec.unpackFixedWidth = function (u8Array) {
+    Codec.unpackFixedWidth = function (u16Array) {
         "use strict";
-        if (u8Array.length < 1) {
+        if (u16Array.length < 1) {
             throw new Error("Invalid data: array is empty");
         }
 
         // Extract metadata from header byte
-        const header = u8Array[0];
-        const bitWide = header >>> 3;      // Bits 3-7 hold the width (1-31)
-        const padding = header & 0x7;      // Bits 0-2 hold padding count
+        const header = u16Array[0];
+        const bitWide = header >>> 8;      // Upper byte holds the width (1-31)
+        const padding = header & 0xFF;     // Lower byte holds padding count
 
-        if (bitWide === 0) {
+        if (bitWide === 0 || bitWide > 31) {
             throw new RangeError("Invalid zero bitWide value");
         }
 
+        if (padding > 15) {
+            throw new RangeError("Invalid padding value");
+        }
+
         // Calculate how many numbers we'll reconstruct
-        const len = u8Array.length;
+        const len = u16Array.length;
         const dataBytes = len - 1;
-        const totalBits = dataBytes * 8 - padding;
+        const totalBits = dataBytes * 16 - padding;
         const arrayLen = Math.floor(totalBits / bitWide);
-        const numberArray = new Array(arrayLen + 7);  // Extra space for safety margin
+        const numberArray = new Array(arrayLen + 15);  // Extra space for safety margin
 
         let buffer = 0;
         let bitCount = 0;
@@ -641,9 +643,9 @@ Codec.stringToU8 = function (str, isAscii) {
         // Process payload bytes while managing 32-bit buffer limits
         for (let i = 1; i < len; ++i) {
             // fill buffer up to 24 bits to avoid overflow when adding new byte
-            while (bitCount <= 24 && i < len) {
-                buffer = (buffer << 8) | u8Array[i++];
-                bitCount += 8;
+            while (bitCount <= 16 && i < len) {
+                buffer = (buffer << 16) | u16Array[i++];
+                bitCount += 16;
             }
 
             if (bitCount >= bitWide) {
@@ -657,16 +659,16 @@ Codec.stringToU8 = function (str, isAscii) {
 
                 --i; // Re-process current byte if it wasn't fully consumed
             } else {
-                const extraBitCount = bitCount - 24;  // Next byte would overflow 32 bits
+                const extraBitCount = bitCount - 16;  // Next byte would overflow 32 bits (16 + bitCount - 32)
                 // Handle the overflow scenario (only happens with bitWide > 24)
-                buffer = ((buffer << (8 - extraBitCount)) | (u8Array[i] >>> extraBitCount));
+                buffer = ((buffer << (16 - extraBitCount)) | (u16Array[i] >>> extraBitCount));
 
                 // Extract a single value from the buffer
                 const val = (buffer >>> pathBitWide);
                 buffer = buffer & MASK_PATCH_WIDE;  // Clear consumed bits
 
                 // Add the overflow portion back to buffer
-                buffer = ((buffer << extraBitCount) | (u8Array[i] & MASK[extraBitCount]));
+                buffer = ((buffer << extraBitCount) | (u16Array[i] & MASK[extraBitCount]));
                 bitCount = pathBitWide + extraBitCount;
                 numberArray[arrayIndex++] = val;
             }

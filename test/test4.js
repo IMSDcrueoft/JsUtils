@@ -75,7 +75,7 @@ const test = new SimpleTest();
 test.test('packFixedWidth - 应该正确打包 1 位宽度的数据', () => {
     const numbers = [0, 1, 0, 1, 1];
     const result = packFixedWidth(numbers, 1);
-    test.assert(result instanceof Uint8Array, '应返回Uint8Array');
+    test.assert(result instanceof Uint16Array, '应返回Uint16Array');
     const unpacked = unpackFixedWidth(result);
     test.assertEquals(unpacked, numbers, '打包后应能正确解包');
 });
@@ -96,7 +96,7 @@ test.test('packFixedWidth - 应该正确打包 3 位宽度的数据', () => {
 
 test.test('packFixedWidth - 应该正确处理空数组', () => {
     const result = packFixedWidth([], 8);
-    test.assert(result instanceof Uint8Array, '应返回Uint8Array实例');
+    test.assert(result instanceof Uint16Array, '应返回Uint16Array实例');
     const unpacked = unpackFixedWidth(result);
     test.assertEquals(unpacked, [], '空数组打包解包后应为空数组');
 });
